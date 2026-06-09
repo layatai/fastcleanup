@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build app (macOS)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          sw_vers
+          xcodebuild -version
+
+      - name: Build & ad-hoc sign app
+        run: ./build.sh
+
+      - name: Package unsigned DMG (CI artifact)
+        run: |
+          set -euo pipefail
+          APP="dist/FastCleanup.app"
+          STAGE="dist/dmg-stage"
+          DMG="dist/FastCleanup-ci.dmg"
+          rm -rf "$STAGE" "$DMG"
+          mkdir -p "$STAGE"
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname FastCleanup -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          rm -rf "$STAGE"
+
+      - name: Verify it launches as a menu-bar agent
+        run: |
+          open dist/FastCleanup.app
+          sleep 3
+          pgrep -lf "MacOS/FastCleanup" && echo "✓ launched" || (echo "✗ did not launch" && exit 1)
+          pkill -f "MacOS/FastCleanup" || true
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastCleanup-dmg
+          path: dist/FastCleanup-ci.dmg
+          if-no-files-found: error
