@@ -10,6 +10,19 @@ enum Format {
         f.unitsStyle = .abbreviated
         return f.localizedString(for: d, relativeTo: Date())
     }
+    /// Full path with the home directory abbreviated to `~` (e.g. `~/projects/app`).
+    static func displayPath(_ url: URL) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let p = url.path
+        guard p.hasPrefix(home) else { return p }
+        let rest = p.dropFirst(home.count)
+        return rest.isEmpty ? "~" : "~" + rest
+    }
+    /// The containing directory, home-abbreviated — what disambiguates same-named
+    /// items like many `node_modules` folders.
+    static func locationPath(_ url: URL) -> String {
+        displayPath(url.deletingLastPathComponent())
+    }
 }
 
 extension Color {

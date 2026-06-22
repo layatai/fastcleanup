@@ -15,7 +15,23 @@ struct DiskScanner: Sendable {
         case .oldFiles(let d):          return oldFiles(olderThanDays: d, under: def.roots)
         case .paths:                    return def.roots.compactMap { pathItem($0) }.sorted { $0.size > $1.size }
         case .gitRepositories(let m):   return gitRepositories(minBytes: m, under: def.roots)
+        case .command(let s):           return commandItem(sizingRoots: s, def: def)
         }
+    }
+
+    /// A command-based category yields one representative item. Its size is the sum of
+    /// the existing backing dirs (may be 0 when there's no cheap estimate). The item is
+    /// always returned so the actionable category surfaces even at 0 bytes.
+    func commandItem(sizingRoots: [URL], def: CategoryDefinition) -> [ScanItem] {
+        let fm = FileManager.default
+        var total: Int64 = 0
+        var anchor: URL?
+        for root in sizingRoots where fm.fileExists(atPath: root.path) {
+            total += size(of: root)
+            if anchor == nil { anchor = root }
+        }
+        let url = anchor ?? def.roots.first ?? fm.homeDirectoryForCurrentUser
+        return [ScanItem(url: url, size: total, modified: nil)]
     }
 
     func pathItem(_ url: URL) -> ScanItem? {

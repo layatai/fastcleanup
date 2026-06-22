@@ -6,6 +6,16 @@ struct RootView: View {
     @State private var showSettings = false
     @State private var expanded: Set<String> = []
 
+    // User-resizable panel size, persisted across launches. MenuBarExtra windows
+    // aren't natively resizable, so we drive the frame from storage and resize it
+    // via the corner grip below.
+    @AppStorage("panelWidth") private var panelWidth: Double = 400
+    @AppStorage("panelHeight") private var panelHeight: Double = 540
+    @State private var resizeBase: CGSize?
+
+    static let minSize = CGSize(width: 360, height: 420)
+    static let maxSize = CGSize(width: 760, height: 1040)
+
     var body: some View {
         VStack(spacing: 0) {
             HeaderView(showSettings: $showSettings)
@@ -16,15 +26,16 @@ struct RootView: View {
                 content
             }
         }
-        .frame(width: 400)
+        .frame(width: panelWidth, height: panelHeight)
         .background(.background)
+        .overlay(alignment: .bottomTrailing) { resizeGrip }
     }
 
     @ViewBuilder private var content: some View {
         if state.isScanning && state.results.isEmpty {
-            ScanningView().frame(height: 360)
+            ScanningView().frame(maxHeight: .infinity)
         } else if state.results.isEmpty {
-            EmptyStateView().frame(height: 360)
+            EmptyStateView().frame(maxHeight: .infinity)
         } else {
             ScrollView {
                 VStack(spacing: 14) {
@@ -33,8 +44,49 @@ struct RootView: View {
                 }
                 .padding(14)
             }
-            .frame(maxHeight: 520)
+            .frame(maxHeight: .infinity)
+            FclonesSuggestionBanner()
             FooterView()
+        }
+    }
+
+    private var resizeGrip: some View {
+        ResizeGrip()
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let base = resizeBase ?? CGSize(width: panelWidth, height: panelHeight)
+                        if resizeBase == nil { resizeBase = base }
+                        panelWidth = min(max(base.width + value.translation.width,
+                                             Self.minSize.width), Self.maxSize.width)
+                        panelHeight = min(max(base.height + value.translation.height,
+                                             Self.minSize.height), Self.maxSize.height)
+                    }
+                    .onEnded { _ in resizeBase = nil }
+            )
+            .help("Drag to resize")
+    }
+}
+
+/// Classic macOS bottom-right resize grip (diagonal ticks). Shows a frame-resize
+/// pointer on hover where the OS supports it (macOS 15+).
+struct ResizeGrip: View {
+    var body: some View {
+        let grip = Canvas { ctx, size in
+            var p = Path()
+            for off in stride(from: 1.0, through: 9.0, by: 4.0) {
+                p.move(to: CGPoint(x: size.width - 1, y: size.height - off))
+                p.addLine(to: CGPoint(x: size.width - off, y: size.height - 1))
+            }
+            ctx.stroke(p, with: .color(.secondary.opacity(0.55)), lineWidth: 1.3)
+        }
+        .frame(width: 15, height: 15)
+
+        if #available(macOS 15.0, *) {
+            grip.pointerStyle(.frameResize(position: .bottomTrailing))
+        } else {
+            grip
         }
     }
 }
@@ -52,6 +104,11 @@ struct HeaderView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            Button {
+                ResultsWindowController.shared.show(state: state)
+            } label: {
+                Image(systemName: "macwindow")
+            }.buttonStyle(.borderless).help("Open results in a window")
             Button { showSettings.toggle() } label: {
                 Image(systemName: showSettings ? "xmark" : "gearshape")
             }.buttonStyle(.borderless).help("Settings")
@@ -135,6 +192,7 @@ struct CategoryRow: View {
     let isExpanded: Bool
     let onToggleSelect: () -> Void
     let onToggleExpand: () -> Void
+    @State private var hoveredItem: ScanItem.ID?
     private var def: CategoryDefinition { result.definition }
     private var revealURL: URL? { result.topItems.first?.url ?? def.roots.first }
 
@@ -171,8 +229,16 @@ struct CategoryRow: View {
         }
         Divider()
         Button(role: .destructive) { state.cleanCategory(def.id) } label: {
-            Label(def.action == .gitCompact ? "Compact with git gc" : "Move All to Trash",
-                  systemImage: def.action == .gitCompact ? "arrow.triangle.2.circlepath" : "trash")
+            Label(cleanActionLabel.text, systemImage: cleanActionLabel.icon)
+        }
+    }
+
+    private var cleanActionLabel: (text: String, icon: String) {
+        switch def.action {
+        case .trash:              return ("Move All to Trash", "trash")
+        case .gitCompact:         return ("Compact with git gc", "arrow.triangle.2.circlepath")
+        case .command(let c):     return ("Run \(c.display)", "terminal")
+        case .dedupeNodeModules:  return ("Deduplicate (APFS clones)", "square.on.square.dashed")
         }
     }
 
@@ -203,9 +269,14 @@ struct CategoryRow: View {
                 Spacer()
                 Text(Format.bytes(result.totalSize)).font(.system(size: 13, weight: .semibold, design: .rounded))
                 Button(action: onToggleExpand) {
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary).rotationEffect(.degrees(isExpanded ? 90 : 0))
-                }.buttonStyle(.plain)
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide items" : "Show items")
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .contentShape(Rectangle())
@@ -216,13 +287,33 @@ struct CategoryRow: View {
                 VStack(spacing: 0) {
                     ForEach(result.topItems.prefix(8)) { item in
                         HStack(spacing: 8) {
-                            Image(systemName: "doc").font(.system(size: 9)).foregroundStyle(.secondary)
-                            Text(item.name).font(.caption2).lineLimit(1).truncationMode(.middle)
-                            Spacer()
+                            Image(systemName: "doc").font(.system(size: 10)).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.name).font(.caption2).lineLimit(1).truncationMode(.middle)
+                                // Where it lives — disambiguates many same-named items (node_modules, dist…).
+                                Text(Format.locationPath(item.url))
+                                    .font(.system(size: 9)).foregroundStyle(.tertiary)
+                                    .lineLimit(1).truncationMode(.head)
+                            }
+                            Spacer(minLength: 8)
                             Text(Format.bytes(item.size)).font(.caption2).foregroundStyle(.secondary)
+                            if !def.isCommandBased {
+                                Button { state.trashItem(item, inCategory: def.id) } label: {
+                                    Image(systemName: "trash").font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain).foregroundStyle(.red)
+                                .opacity(hoveredItem == item.id ? 1 : 0)
+                                .help("Move to Trash")
+                                .frame(width: 16)
+                            }
                         }
-                        .padding(.vertical, 3).padding(.leading, 44).padding(.trailing, 12)
+                        .padding(.vertical, 4).padding(.leading, 44).padding(.trailing, 12)
                         .contentShape(Rectangle())
+                        .help(item.path)
+                        .onHover { inside in
+                            if inside { hoveredItem = item.id }
+                            else if hoveredItem == item.id { hoveredItem = nil }
+                        }
                         .onTapGesture(count: 2) { FileActions.reveal(item.url) }
                         .contextMenu { itemMenu(item) }
                     }
@@ -268,6 +359,35 @@ struct FooterView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
+        }
+    }
+}
+
+/// Shown when `fclones` isn't installed on an APFS volume — offers a one-click
+/// Homebrew install that unlocks the non-destructive node_modules dedupe action.
+struct FclonesSuggestionBanner: View {
+    @EnvironmentObject var state: AppState
+    var body: some View {
+        if state.canSuggestFclones {
+            HStack(spacing: 10) {
+                Image(systemName: "wand.and.stars").foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Shrink node_modules without deleting")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Install fclones to dedupe identical files via APFS clones.")
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                }
+                Spacer(minLength: 8)
+                Button { state.installFclones() } label: {
+                    if state.isInstallingTool { ProgressView().controlSize(.small) }
+                    else { Text("Install") }
+                }
+                .controlSize(.small)
+                .disabled(state.isInstallingTool)
+                .help("brew install fclones")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.tint.opacity(0.08))
         }
     }
 }
@@ -333,11 +453,11 @@ struct SettingsView: View {
             }
             Divider()
             HStack {
-                Text("FastCleanup 1.0").font(.caption).foregroundStyle(.secondary)
+                Text("FastCleanup 1.1").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Quit", role: .destructive) { NSApplication.shared.terminate(nil) }.controlSize(.small)
             }
         }
-        .padding(16).frame(height: 360, alignment: .top)
+        .padding(16).frame(maxHeight: .infinity, alignment: .top)
     }
 }

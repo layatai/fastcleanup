@@ -46,7 +46,7 @@ enum CategoryCatalog {
             containers.appending(path: "com.docker.docker/Data/log", directoryHint: .isDirectory),
         ]
 
-        let defs: [CategoryDefinition] = [
+        var defs: [CategoryDefinition] = [
             .init(id: "app-caches", title: "Application Caches",
                   subtitle: "~/Library/Caches", systemImage: "shippingbox.fill",
                   tintHex: "3B82F6", safety: .safe, roots: [h("Library/Caches")], strategy: .children),
@@ -62,9 +62,21 @@ enum CategoryCatalog {
                   tintHex: "22C55E", safety: .safe, roots: [home],
                   strategy: .namedDirectories(["node_modules"])),
             .init(id: "build-artifacts", title: "Build Artifacts",
-                  subtitle: "target, .next, dist, .turbo", systemImage: "wrench.and.screwdriver.fill",
+                  subtitle: "dist, .next, target, .turbo, __pycache__, .pytest_cache",
+                  systemImage: "wrench.and.screwdriver.fill",
                   tintHex: "10B981", safety: .safe, roots: [home],
-                  strategy: .namedDirectories(["target", ".next", "dist", ".turbo", ".parcel-cache"])),
+                  strategy: .namedDirectories([
+                    "target", ".next", "dist", ".turbo", ".parcel-cache", ".svelte-kit", "coverage",
+                    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+                  ])),
+            .init(id: "python-envs", title: "Python Environments",
+                  subtitle: "Virtualenvs (.venv, venv) — recreate with your tool",
+                  systemImage: "cube.transparent", tintHex: "EAB308", safety: .caution,
+                  roots: [home], strategy: .namedDirectories([".venv", "venv"])),
+            .init(id: "saved-app-state", title: "Saved Application State",
+                  subtitle: "~/Library/Saved Application State — window/restore state",
+                  systemImage: "macwindow.on.rectangle", tintHex: "0891B2", safety: .safe,
+                  roots: [h("Library/Saved Application State")], strategy: .children),
             .init(id: "pkg-stores", title: "Package Manager Stores",
                   subtitle: "pnpm, npm, cargo, gradle", systemImage: "archivebox.fill",
                   tintHex: "14B8A6", safety: .safe, roots: pkgRoots, strategy: .children),
@@ -108,7 +120,75 @@ enum CategoryCatalog {
                   roots: [h("Desktop"), h("Documents"), h("Movies")],
                   strategy: .largeFiles(minBytes: 500 * 1024 * 1024)),
         ]
+
+        // ---- Command-based cleanups (new capability) ----------------------------
+        // Each is gated on the tool being installed and is opt-in (commands are never
+        // auto-selected). They reclaim space by running an external tool rather than
+        // trashing files; some have no cheap size estimate (sizingRoots empty).
+        func command(_ id: String, _ title: String, _ subtitle: String,
+                     image: String, tint: String, safety: Safety,
+                     exe: String, args: [String], sizingRoots: [URL] = []) -> CategoryDefinition {
+            .init(id: id, title: title, subtitle: subtitle, systemImage: image,
+                  tintHex: tint, safety: safety, roots: sizingRoots,
+                  strategy: .command(sizingRoots: sizingRoots),
+                  action: .command(ShellCommand(executable: exe, arguments: args)))
+        }
+
+        if CommandRunner.hasBinary("brew") {
+            defs.append(command("brew-cleanup", "Homebrew cleanup",
+                                "brew cleanup -s — stale downloads & old versions",
+                                image: "mug.fill", tint: "F59E0B", safety: .safe,
+                                exe: "brew", args: ["cleanup", "-s"],
+                                sizingRoots: [h("Library/Caches/Homebrew")]))
+            defs.append(command("brew-autoremove", "Homebrew autoremove",
+                                "brew autoremove — unused dependency formulae",
+                                image: "mug", tint: "F59E0B", safety: .caution,
+                                exe: "brew", args: ["autoremove"]))
+        }
+        if CommandRunner.hasBinary("docker") {
+            let docker: [(String, String, String, [String])] = [
+                ("docker-system-prune", "Docker system prune",
+                 "docker system prune -f — unused data & build cache", ["system", "prune", "-f"]),
+                ("docker-builder-prune", "Docker builder prune",
+                 "docker builder prune -f — build cache", ["builder", "prune", "-f"]),
+                ("docker-image-prune", "Docker image prune",
+                 "docker image prune -f — dangling images", ["image", "prune", "-f"]),
+                ("docker-container-prune", "Docker container prune",
+                 "docker container prune -f — stopped containers", ["container", "prune", "-f"]),
+                ("docker-volume-prune", "Docker volume prune (DESTRUCTIVE)",
+                 "docker volume prune -f — may delete database data", ["volume", "prune", "-f"]),
+            ]
+            for (id, title, subtitle, args) in docker {
+                defs.append(command(id, title, subtitle, image: "shippingbox.fill",
+                                    tint: "2496ED", safety: .caution, exe: "docker", args: args))
+            }
+        }
+        if CommandRunner.hasBinary("pnpm") {
+            defs.append(command("pnpm-store-prune", "pnpm store prune",
+                                "pnpm store prune — remove unreferenced packages",
+                                image: "archivebox.fill", tint: "F69220", safety: .safe,
+                                exe: "pnpm", args: ["store", "prune"],
+                                sizingRoots: [h("Library/pnpm"), h(".pnpm-store")]))
+        }
+
+        // ---- Non-destructive node_modules optimization (APFS clone dedupe) -------
+        if CommandRunner.hasBinary("fclones") && CommandRunner.isAPFS(home) {
+            defs.append(.init(
+                id: "node-modules-dedupe", title: "Optimize node_modules (dedupe)",
+                subtitle: "Share identical files via APFS clones — projects keep working",
+                systemImage: "square.on.square.dashed", tintHex: "16A34A", safety: .safe,
+                roots: [home], strategy: .command(sizingRoots: []),
+                action: .dedupeNodeModules))
+        }
+
         let fm = FileManager.default
-        return defs.filter { d in d.roots.contains { fm.fileExists(atPath: $0.path) } }
+        return defs.filter { d in
+            switch d.action {
+            // Command/dedupe categories are gated by hasBinary above and may have no
+            // existing backing path — keep them regardless of the roots check.
+            case .command, .dedupeNodeModules: return true
+            default: return d.roots.contains { fm.fileExists(atPath: $0.path) }
+            }
+        }
     }
 }

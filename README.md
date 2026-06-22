@@ -15,7 +15,7 @@ shows it all as charts before you clean a thing.
 
 Grab the latest signed & notarized installer from
 **[Releases](https://github.com/layatai/fastcleanup/releases/latest)** →
-`FastCleanup-1.0.dmg`. Drag **FastCleanup** to Applications, launch it, and the
+`FastCleanup-1.1.dmg`. Drag **FastCleanup** to Applications, launch it, and the
 ✨ icon appears in your menu bar. It's notarized by Apple, so it opens
 warning-free. Requires **macOS 14+**.
 
@@ -23,15 +23,32 @@ warning-free. Requires **macOS 14+**.
 
 - **🔍 Concurrent scan engine** — parallel directory enumeration (`TaskGroup`)
   with allocated-size accounting; cancellable, with live per-category progress.
+- **🪟 Two ways to work** — a compact **menu-bar popover** (now **drag-to-resize**
+  from the corner grip; your size is remembered), or a full **native results
+  window** with a category sidebar and a sortable, multi-select table (Name ·
+  Location · Modified · Size). The window only appears on demand — no Dock icon
+  until you open it.
+- **🧭 Location-aware rows** — every item shows *where* it lives, so you can tell
+  ten different `node_modules` apart before removing them.
 - **📊 Charts & statistics** — a disk-usage **ring gauge** (free/used, color-coded
   by pressure: green → orange → red) and a Swift Charts **donut** of reclaimable
   space broken down by category.
-- **🧮 16 disjoint categories** — no double-counting; see the table below.
+- **🧮 Many disjoint categories** — no double-counting; see the table below.
 - **✅ Safe by default** — only safe, regenerable categories are pre-selected.
   Caution items (AI models, messaging caches, container VMs) are unchecked until
   you opt in.
 - **🗑️ Reversible cleanup** — everything **moves to the Trash** by default and can
   be recovered. Permanent delete is an opt-in toggle in Settings.
+- **🛠️ Command-based cleanups** — beyond trashing files, FastCleanup can run the
+  tools' own reclaimers — `brew cleanup`, `docker … prune`, `pnpm store prune` —
+  each shown only when the tool is installed, and opt-in (never auto-selected).
+- **🧬 node_modules dedupe (non-destructive)** — when `fclones` is installed on an
+  APFS volume, *Optimize node_modules (dedupe)* replaces identical files across your
+  `node_modules` trees with copy-on-write **clones**, reclaiming space while the
+  projects keep working. (Tip: `pnpm` prevents the duplication structurally.)
+  Don't have `fclones`? A one-click **Install** banner appears (runs
+  `brew install fclones`); or install it yourself with `brew install fclones`
+  (or `cargo install fclones`).
 - **🔓 In-use aware** — files a running app has locked (e.g. a browser's cache while
   it's open) are reported as "*N in use — quit the app & rescan*" instead of being
   silently skipped, so the freed total never lies.
@@ -55,8 +72,10 @@ warning-free. Requires **macOS 14+**.
 | **Xcode DerivedData** | Build intermediates & indexes | ✅ |
 | **Xcode Device Support** | Device support, archives, simulator caches | ⚠️ |
 | **node_modules** | All `node_modules` under your home tree | ✅ |
-| **Build Artifacts** | `target`, `.next`, `dist`, `.turbo`, `.parcel-cache` | ✅ |
+| **Build Artifacts** | `dist`, `.next`, `target`, `.turbo`, `coverage`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox` | ✅ |
+| **Python Environments** | `.venv` / `venv` virtualenvs (recreate with your tool) | ⚠️ |
 | **Package Manager Stores** | pnpm, npm, cargo, gradle stores | ✅ |
+| **Saved Application State** | `~/Library/Saved Application State` (all apps, incl. system) | ✅ |
 | **Git Repositories** | Large `.git` dirs → `git gc` (keeps every commit) | ⚠️ |
 | **Local AI Models** | GPT4All, Ollama, LM Studio, HuggingFace cache | ⚠️ |
 | **Messaging Caches** | Zalo, Telegram, Slack media | ⚠️ |
@@ -66,7 +85,17 @@ warning-free. Requires **macOS 14+**.
 | **Old Downloads** | `~/Downloads` not modified in 90+ days | ⚠️ |
 | **Large Files** | Files over 500 MB in Desktop / Documents / Movies | ⚠️ |
 
-✅ = pre-selected (safe, regenerates) · ⚠️ = opt-in (review first)
+### Command-based cleanups (shown only when the tool is installed; opt-in)
+
+| Category | Runs |
+|---|---|
+| **Homebrew cleanup** | `brew cleanup -s` (✅ safe) · **Homebrew autoremove** `brew autoremove` (⚠️) |
+| **Docker prune** | `docker system / builder / image / container prune -f` (⚠️) · `docker volume prune -f` (⚠️ destructive) |
+| **pnpm store prune** | `pnpm store prune` — removes unreferenced packages (✅ safe) |
+| **Optimize node_modules (dedupe)** | `fclones` APFS clone-dedupe — non-destructive (requires `fclones` + APFS) |
+
+✅ = pre-selected (safe, regenerates) · ⚠️ = opt-in (review first). Command-based
+cleanups are always opt-in.
 
 ## Build & run
 
@@ -113,9 +142,16 @@ Pure Swift Package Manager executable assembled into a `MenuBarExtra`
 | `Catalog.swift` | The 16 category definitions (paths + strategy + tint) |
 | `AppState.swift` | `@MainActor` view-model: scan / select / clean / trash |
 | `GitMaintenance.swift` | `git gc` runner |
+| `CommandRunner.swift` | External-tool runner (brew/docker/pnpm), binary/APFS detection, `fclones` dedupe |
 | `Donut.swift` | Swift Charts donut |
-| `Views.swift` | Menu-bar panel UI + context menus |
+| `Views.swift` | Menu-bar panel UI (resizable) + context menus |
+| `DetailWindow.swift` | Native results window: sidebar + sortable `Table` |
+| `ResultsWindow.swift` | On-demand `NSWindow` host + activation-policy switching |
 | `App.swift` | `MenuBarExtra` entry point |
+
+The app icon is generated programmatically (no design tools needed) by
+`scripts/AppIcon.swift`; `scripts/make-icns.sh` packs it into `AppIcon.icns`,
+which `build.sh` bundles automatically.
 
 ## License
 
