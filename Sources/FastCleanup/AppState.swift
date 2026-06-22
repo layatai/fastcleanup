@@ -103,12 +103,14 @@ final class AppState: ObservableObject {
         statusMessage = nil
 
         Task { [weak self] in
-            let freed = await Task.detached(priority: .userInitiated) {
+            let outcome = await Task.detached(priority: .userInitiated) {
                 Self.perform(targets, useTrash: useTrash, scanner: scanner)
             }.value
             guard let self else { return }
             self.isCleaning = false
-            self.statusMessage = "Freed \(Format.bytes(freed))"
+            self.statusMessage = outcome.skipped > 0
+                ? "Freed \(Format.bytes(outcome.freed)) · \(outcome.skipped) in use — quit the app & rescan"
+                : "Freed \(Format.bytes(outcome.freed))"
             self.selected = []
             self.scan()
         }
@@ -133,9 +135,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Result of a cleanup pass: bytes reclaimed plus how many items couldn't be
+    /// removed because they were locked/in use (e.g. a browser's cache while it runs).
+    struct CleanOutcome: Sendable { var freed: Int64 = 0; var skipped: Int = 0 }
+
     nonisolated private static func perform(_ targets: [CategoryResult],
-                                            useTrash: Bool, scanner: DiskScanner) -> Int64 {
-        var freed: Int64 = 0
+                                            useTrash: Bool, scanner: DiskScanner) -> CleanOutcome {
+        var out = CleanOutcome()
         let fm = FileManager.default
         for cat in targets {
             switch cat.definition.action {
@@ -144,18 +150,21 @@ final class AppState: ObservableObject {
                     do {
                         if useTrash { try fm.trashItem(at: item.url, resultingItemURL: nil) }
                         else        { try fm.removeItem(at: item.url) }
-                        freed += item.size
-                    } catch { /* skip protected / vanished paths */ }
+                        out.freed += item.size
+                    } catch {
+                        // Vanished paths are gone already; anything still on disk is locked/in use.
+                        if fm.fileExists(atPath: item.url.path) { out.skipped += 1 }
+                    }
                 }
             case .gitCompact:
                 for item in cat.items {
                     let gitDir = item.url.appending(path: ".git", directoryHint: .isDirectory)
                     let before = scanner.size(of: gitDir)
                     GitMaintenance.gc(at: item.url)
-                    freed += max(0, before - scanner.size(of: gitDir))
+                    out.freed += max(0, before - scanner.size(of: gitDir))
                 }
             }
         }
-        return freed
+        return out
     }
 }

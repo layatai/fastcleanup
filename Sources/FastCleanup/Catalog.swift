@@ -18,6 +18,11 @@ enum CategoryCatalog {
         ]
         let appSupport = h("Library/Application Support")
         let containers = h("Library/Containers")
+        // VS Code-family editors keep a stale `state.vscdb.backup` snapshot next to the
+        // live `state.vscdb` in globalStorage — frequently multiple GB, safe to delete
+        // (the editor recreates it). The live `state.vscdb` itself is left untouched.
+        let editorStateRoots = ["Cursor", "Code", "Code - Insiders", "VSCodium", "Trae", "Windsurf"]
+            .map { appSupport.appending(path: "\($0)/User/globalStorage", directoryHint: .isDirectory) }
         let electronCacheNames = ["Cache", "Caches", "Code Cache", "GPUCache", "CachedData",
             "Service Worker", "Crashpad", "CachedExtensionVSIXs", "DawnCache",
             "DawnGraphiteCache", "ShaderCache", "GrShaderCache", "Cache_Data",
@@ -63,6 +68,10 @@ enum CategoryCatalog {
             .init(id: "pkg-stores", title: "Package Manager Stores",
                   subtitle: "pnpm, npm, cargo, gradle", systemImage: "archivebox.fill",
                   tintHex: "14B8A6", safety: .safe, roots: pkgRoots, strategy: .children),
+            .init(id: "editor-state-backups", title: "Editor State Backups",
+                  subtitle: "Stale *.vscdb.backup in Cursor / VS Code — live DB untouched",
+                  systemImage: "externaldrive.badge.xmark", tintHex: "6366F1", safety: .safe,
+                  roots: editorStateRoots, strategy: .namedFiles(suffixes: [".vscdb.backup"])),
             .init(id: "app-data-caches", title: "App Data Caches",
                   subtitle: "Cursor, Claude, VS Code, Electron app caches",
                   systemImage: "app.badge.fill", tintHex: "0EA5E9", safety: .safe,

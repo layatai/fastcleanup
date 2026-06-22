@@ -10,6 +10,7 @@ struct DiskScanner: Sendable {
         case .children:                 return def.roots.flatMap { childrenItems(of: $0) }
         case .namedDirectories(let n):  return namedDirectories(Set(n), under: def.roots)
         case .cacheDirectories(let n):  return namedDirectories(Set(n), under: def.roots, skip: [], maxDepth: 6)
+        case .namedFiles(let s):        return namedFiles(suffixes: s, under: def.roots)
         case .largeFiles(let m):        return largeFiles(minBytes: m, under: def.roots)
         case .oldFiles(let d):          return oldFiles(olderThanDays: d, under: def.roots)
         case .paths:                    return def.roots.compactMap { pathItem($0) }.sorted { $0.size > $1.size }
@@ -118,6 +119,29 @@ struct DiskScanner: Sendable {
                 } else if let maxDepth, url.pathComponents.count - rootDepth >= maxDepth {
                     en.skipDescendants()
                 }
+            }
+        }
+        return items.sorted { $0.size > $1.size }
+    }
+
+    /// Regular files whose name ends with any of `suffixes` (e.g. stale `*.vscdb.backup`
+    /// snapshots editors leave in globalStorage). Matches by name, not size/date.
+    func namedFiles(suffixes: [String], under roots: [URL]) -> [ScanItem] {
+        let fm = FileManager.default
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .totalFileAllocatedSizeKey,
+                                         .fileSizeKey, .contentModificationDateKey]
+        var items: [ScanItem] = []
+        for root in roots {
+            guard let en = fm.enumerator(at: root, includingPropertiesForKeys: Array(keys),
+                                         options: []) else { continue }
+            for case let url as URL in en {
+                if Task.isCancelled { break }
+                guard suffixes.contains(where: { url.lastPathComponent.hasSuffix($0) }) else { continue }
+                let v = try? url.resourceValues(forKeys: keys)
+                guard v?.isRegularFile == true else { continue }
+                let s = Int64(v?.totalFileAllocatedSize ?? v?.fileSize ?? 0)
+                guard s > 0 else { continue }
+                items.append(ScanItem(url: url, size: s, modified: v?.contentModificationDate))
             }
         }
         return items.sorted { $0.size > $1.size }

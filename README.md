@@ -26,12 +26,15 @@ warning-free. Requires **macOS 14+**.
 - **📊 Charts & statistics** — a disk-usage **ring gauge** (free/used, color-coded
   by pressure: green → orange → red) and a Swift Charts **donut** of reclaimable
   space broken down by category.
-- **🧮 15 disjoint categories** — no double-counting; see the table below.
+- **🧮 16 disjoint categories** — no double-counting; see the table below.
 - **✅ Safe by default** — only safe, regenerable categories are pre-selected.
   Caution items (AI models, messaging caches, container VMs) are unchecked until
   you opt in.
 - **🗑️ Reversible cleanup** — everything **moves to the Trash** by default and can
   be recovered. Permanent delete is an opt-in toggle in Settings.
+- **🔓 In-use aware** — files a running app has locked (e.g. a browser's cache while
+  it's open) are reported as "*N in use — quit the app & rescan*" instead of being
+  silently skipped, so the freed total never lies.
 - **🌿 Git-aware** — large `.git` repos are compacted with `git gc` (repacks
   history, reclaims loose objects) **without losing a single commit** — never
   deleted.
@@ -46,7 +49,8 @@ warning-free. Requires **macOS 14+**.
 
 | Category | What it targets | Default |
 |---|---|---|
-| **Application Caches** | `~/Library/Caches` (pnpm, Playwright, JetBrains, browsers…) | ✅ |
+| **Application Caches** | `~/Library/Caches` (pip, JetBrains, browsers, `*-updater`…) | ✅ |
+| **Editor State Backups** | Stale `*.vscdb.backup` in Cursor / VS Code globalStorage (live DB kept) | ✅ |
 | **App Data Caches** | Electron caches inside Cursor, Claude, VS Code, etc. | ✅ |
 | **Xcode DerivedData** | Build intermediates & indexes | ✅ |
 | **Xcode Device Support** | Device support, archives, simulator caches | ⚠️ |
@@ -106,7 +110,7 @@ Pure Swift Package Manager executable assembled into a `MenuBarExtra`
 | `Models.swift` | `ScanItem`, `CategoryDefinition`, strategies, `CleanupAction` |
 | `DiskScanner.swift` | Concurrent filesystem scan engine |
 | `DiskSpace.swift` | Volume capacity stats |
-| `Catalog.swift` | The 15 category definitions (paths + strategy + tint) |
+| `Catalog.swift` | The 16 category definitions (paths + strategy + tint) |
 | `AppState.swift` | `@MainActor` view-model: scan / select / clean / trash |
 | `GitMaintenance.swift` | `git gc` runner |
 | `Donut.swift` | Swift Charts donut |

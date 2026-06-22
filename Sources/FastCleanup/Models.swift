@@ -15,6 +15,7 @@ enum CollectStrategy: Sendable {
     case children
     case namedDirectories([String])
     case cacheDirectories([String])
+    case namedFiles(suffixes: [String])
     case largeFiles(minBytes: Int64)
     case oldFiles(olderThanDays: Int)
     case paths
