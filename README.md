@@ -6,10 +6,11 @@ icon), finds gigabytes of safe-to-remove caches, build artifacts, and junk, and
 shows it all as charts before you clean a thing.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="FastCleanup menu-bar panel" width="430">
+  <img src="docs/screenshot.png" alt="FastCleanup — menu-bar panel and native results window" width="880">
 </p>
 
-> Real scan above: **247 GB reclaimable** surfaced across 15 categories.
+> Real scan above: **130 GB reclaimable** surfaced across 18 categories, with the
+> native results window open on Package Manager Stores.
 
 ## Download
 
