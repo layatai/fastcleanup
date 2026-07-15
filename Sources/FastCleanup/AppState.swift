@@ -75,7 +75,12 @@ final class AppState: ObservableObject {
 
         scanTask = Task { [weak self] in
             // Build the catalog off the main thread — tool detection may spawn a login shell.
-            let defs = await Task.detached(priority: .userInitiated) { CategoryCatalog.all() }.value
+            // Clear the resolver cache first: a tool installed/started after the app's first
+            // scan (e.g. Docker Desktop) must not stay hidden behind a stale "not found".
+            let defs = await Task.detached(priority: .userInitiated) {
+                CommandRunner.clearCache()
+                return CategoryCatalog.all()
+            }.value
             guard let self else { return }
             self.progress = ScanProgress(total: defs.count, completed: 0, current: nil)
             var collected: [CategoryResult] = []
