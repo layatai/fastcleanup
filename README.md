@@ -16,7 +16,7 @@ shows it all as charts before you clean a thing.
 
 Grab the latest signed & notarized installer from
 **[Releases](https://github.com/layatai/fastcleanup/releases/latest)** →
-`FastCleanup-1.1.dmg`. Drag **FastCleanup** to Applications, launch it, and the
+`FastCleanup-1.2.dmg`. Drag **FastCleanup** to Applications, launch it, and the
 ✨ icon appears in your menu bar. It's notarized by Apple, so it opens
 warning-free. Requires **macOS 14+**.
 
@@ -140,7 +140,7 @@ Pure Swift Package Manager executable assembled into a `MenuBarExtra`
 | `Models.swift` | `ScanItem`, `CategoryDefinition`, strategies, `CleanupAction` |
 | `DiskScanner.swift` | Concurrent filesystem scan engine |
 | `DiskSpace.swift` | Volume capacity stats |
-| `Catalog.swift` | The 16 category definitions (paths + strategy + tint) |
+| `Catalog.swift` | The 19 category definitions (paths + strategy + tint) |
 | `AppState.swift` | `@MainActor` view-model: scan / select / clean / trash |
 | `GitMaintenance.swift` | `git gc` runner |
 | `CommandRunner.swift` | External-tool runner (brew/docker/pnpm), binary/APFS detection, `fclones` dedupe |
