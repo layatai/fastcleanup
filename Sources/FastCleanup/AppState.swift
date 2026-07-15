@@ -37,7 +37,13 @@ final class AppState: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var statusClearTask: Task<Void, Never>?
 
+    /// Categories with measured bytes — drives the donut and the reclaimable total.
     var nonEmptyResults: [CategoryResult] { results.filter { $0.totalSize > 0 } }
+    /// Rows to list. Command/dedupe categories stay listed at 0 bytes: they have no
+    /// cheap size estimate, so hiding them would hide the only way to run them.
+    var visibleResults: [CategoryResult] {
+        results.filter { $0.totalSize > 0 || $0.definition.isCommandBased }
+    }
     var reclaimable: Int64 { nonEmptyResults.reduce(0) { $0 + $1.totalSize } }
     var selectedSize: Int64 { results.filter { selected.contains($0.id) }.reduce(0) { $0 + $1.totalSize } }
     var selectedCount: Int { results.filter { selected.contains($0.id) }.reduce(0) { $0 + $1.count } }

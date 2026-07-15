@@ -168,7 +168,7 @@ struct CategoryListCard: View {
     @EnvironmentObject var state: AppState
     @Binding var expanded: Set<String>
     var body: some View {
-        let rows = state.nonEmptyResults
+        let rows = state.visibleResults
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
                 CategoryRow(result: r,
@@ -229,16 +229,7 @@ struct CategoryRow: View {
         }
         Divider()
         Button(role: .destructive) { state.cleanCategory(def.id) } label: {
-            Label(cleanActionLabel.text, systemImage: cleanActionLabel.icon)
-        }
-    }
-
-    private var cleanActionLabel: (text: String, icon: String) {
-        switch def.action {
-        case .trash:              return ("Move All to Trash", "trash")
-        case .gitCompact:         return ("Compact with git gc", "arrow.triangle.2.circlepath")
-        case .command(let c):     return ("Run \(c.display)", "terminal")
-        case .dedupeNodeModules:  return ("Deduplicate (APFS clones)", "square.on.square.dashed")
+            Label(def.actionLabel.text, systemImage: def.actionLabel.icon)
         }
     }
 
@@ -263,11 +254,26 @@ struct CategoryRow: View {
                             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundStyle(.orange)
                         }
                     }
-                    Text("\(result.count) item\(result.count == 1 ? "" : "s") · \(def.subtitle)")
+                    // Unmeasured command categories have no item count to report.
+                    Text(result.count == 0 ? def.subtitle
+                         : "\(result.count) item\(result.count == 1 ? "" : "s") · \(def.subtitle)")
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Text(Format.bytes(result.totalSize)).font(.system(size: 13, weight: .semibold, design: .rounded))
+                // "0 B" would imply "nothing to reclaim"; these just aren't measurable up front.
+                Text(result.totalSize == 0 && def.isCommandBased ? "—" : Format.bytes(result.totalSize))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(result.totalSize == 0 && def.isCommandBased ? .secondary : .primary)
+                if def.isCommandBased {
+                    Button { state.cleanCategory(def.id) } label: {
+                        Image(systemName: "play.circle.fill").font(.system(size: 18))
+                            .foregroundStyle(def.tint)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.isCleaning)
+                    .help(def.actionLabel.text)
+                }
+                // Nothing to disclose when the category has no measured items.
                 Button(action: onToggleExpand) {
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -277,6 +283,8 @@ struct CategoryRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isExpanded ? "Hide items" : "Show items")
+                .opacity(result.items.isEmpty ? 0 : 1)
+                .disabled(result.items.isEmpty)
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .contentShape(Rectangle())

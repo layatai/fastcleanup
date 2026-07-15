@@ -40,4 +40,13 @@ extension Color {
 
 extension CategoryDefinition {
     var tint: Color { Color(hex: tintHex) }
+    /// Label + icon describing what a category's Clean/Run action does.
+    var actionLabel: (text: String, icon: String) {
+        switch action {
+        case .trash:              return ("Move All to Trash", "trash")
+        case .gitCompact:         return ("Compact with git gc", "arrow.triangle.2.circlepath")
+        case .command(let c):     return ("Run \(c.display)", "terminal")
+        case .dedupeNodeModules:  return ("Deduplicate (APFS clones)", "square.on.square.dashed")
+        }
+    }
 }

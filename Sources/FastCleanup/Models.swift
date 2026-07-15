@@ -42,6 +42,12 @@ enum CleanupAction: Equatable, Sendable {
     case gitCompact         // run `git gc` to repack history (keeps all commits)
     case command(ShellCommand)   // run an external tool (brew/docker/pnpm …) to reclaim space
     case dedupeNodeModules  // APFS clone-dedupe of node_modules under the category roots
+
+    /// The command line this action runs, for actions that shell out to a tool.
+    var commandDisplay: String? {
+        if case .command(let c) = self { return c.display }
+        return nil
+    }
 }
 
 struct CategoryDefinition: Identifiable, Sendable {

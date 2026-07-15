@@ -9,7 +9,7 @@ struct DetailWindowView: View {
     @State private var selection = Set<ScanItem.ID>()
     @State private var sortOrder = [KeyPathComparator(\ScanItem.size, order: .reverse)]
 
-    private var categories: [CategoryResult] { state.nonEmptyResults }
+    private var categories: [CategoryResult] { state.visibleResults }
     private var current: CategoryResult? {
         categories.first { $0.id == selectedCategoryID } ?? categories.first
     }
@@ -56,12 +56,22 @@ struct DetailWindowView: View {
                             .font(.system(size: 8)).foregroundStyle(.orange)
                     }
                 }
-                Text("\(r.count) item\(r.count == 1 ? "" : "s")")
-                    .font(.caption2).foregroundStyle(.secondary)
+                Text(r.count == 0 && r.definition.isCommandBased
+                     ? "Runs \(r.definition.action.commandDisplay ?? "a tool")"
+                     : "\(r.count) item\(r.count == 1 ? "" : "s")")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Text(Format.bytes(r.totalSize))
+            Text(r.totalSize == 0 && r.definition.isCommandBased ? "—" : Format.bytes(r.totalSize))
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            if r.definition.isCommandBased {
+                Button { state.cleanCategory(r.id) } label: {
+                    Image(systemName: "play.circle.fill").foregroundStyle(r.definition.tint)
+                }
+                .buttonStyle(.plain)
+                .disabled(state.isCleaning)
+                .help(r.definition.actionLabel.text)
+            }
         }
         .padding(.vertical, 2)
     }
@@ -131,7 +141,15 @@ struct DetailWindowView: View {
             }
             .width(min: 80, ideal: 96)
             TableColumn("") { item in
-                if !cat.definition.isCommandBased {
+                if cat.definition.isCommandBased {
+                    Button { state.cleanCategory(cat.id) } label: {
+                        Image(systemName: "play.circle.fill").foregroundStyle(cat.definition.tint)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(state.isCleaning)
+                    .help(cat.definition.actionLabel.text)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                } else {
                     Button {
                         state.trashItems([item], inCategory: cat.id)
                         selection.remove(item.id)
