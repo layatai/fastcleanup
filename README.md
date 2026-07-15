@@ -16,7 +16,7 @@ shows it all as charts before you clean a thing.
 
 Grab the latest signed & notarized installer from
 **[Releases](https://github.com/layatai/fastcleanup/releases/latest)** →
-`FastCleanup-1.2.dmg`. Drag **FastCleanup** to Applications, launch it, and the
+`FastCleanup-1.3.dmg`. Drag **FastCleanup** to Applications, launch it, and the
 ✨ icon appears in your menu bar. It's notarized by Apple, so it opens
 warning-free. Requires **macOS 14+**.
 

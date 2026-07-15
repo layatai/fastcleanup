@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="FastCleanup"
-VERSION="${VERSION:-1.2}"
+VERSION="${VERSION:-1.3}"
 APP="dist/$APP_NAME.app"
 DMG="dist/$APP_NAME-$VERSION.dmg"
 STAGE="dist/dmg-stage"
