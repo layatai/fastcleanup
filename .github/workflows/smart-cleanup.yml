@@ -30,9 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           BIN=dist/FastCleanup.app/Contents/MacOS/FastCleanup
-          lipo -verify_arch arm64 x86_64 "$BIN"
-          otool -L "$BIN"
-          otool -l "$BIN" > /tmp/load-commands.txt
+          lipo "$BIN" -verify_arch arm64 x86_64
+          otool -arch all -L "$BIN"
+          otool -arch all -l "$BIN" > /tmp/load-commands.txt
           python3 - <<'PY'
           from pathlib import Path
           chunks = Path('/tmp/load-commands.txt').read_text().split('Load command')
