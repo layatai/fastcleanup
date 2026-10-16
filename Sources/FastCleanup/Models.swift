@@ -1,20 +1,26 @@
 import Foundation
+import FastCleanupCore
 
 struct ScanItem: Identifiable, Hashable, Sendable {
     let id = UUID()
     let url: URL
     let size: Int64
     let modified: Date?
+    // Cheap root identity captured at scan time. Smart Cleanup additionally snapshots descendants.
+    let fileIdentity: FileStamp.Entry?
+    init(url: URL, size: Int64, modified: Date?) {
+        self.url = url; self.size = size; self.modified = modified
+        self.fileIdentity = try? LocalCleanupFileSystem().rootIdentity(url)
+    }
+    static func == (lhs: ScanItem, rhs: ScanItem) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
     var name: String { url.lastPathComponent }
     var path: String { url.path }
-    /// Containing directory, home-abbreviated — disambiguates same-named items.
     var location: String { Format.locationPath(url) }
-    /// Non-optional key for Table sorting.
     var sortableModified: Date { modified ?? .distantPast }
 }
 
 enum Safety: Sendable { case safe, caution }
-
 enum CollectStrategy: Sendable {
     case children
     case namedDirectories([String])
@@ -24,32 +30,24 @@ enum CollectStrategy: Sendable {
     case oldFiles(olderThanDays: Int)
     case paths
     case gitRepositories(minBytes: Int64)
-    /// A command-based cleanup. Yields one representative item whose size is the
-    /// sum of the existing `sizingRoots` (the command's backing cache dirs, if any;
-    /// may be empty for tools like `docker prune` with no cheap size estimate).
     case command(sizingRoots: [URL])
 }
-
-/// An external tool invocation used by command-based cleanups.
 struct ShellCommand: Sendable, Hashable {
     let executable: String
     let arguments: [String]
     var display: String { ([executable] + arguments).joined(separator: " ") }
 }
-
 enum CleanupAction: Equatable, Sendable {
-    case trash              // move items to Trash (or delete permanently)
-    case gitCompact         // run `git gc` to repack history (keeps all commits)
-    case command(ShellCommand)   // run an external tool (brew/docker/pnpm …) to reclaim space
-    case dedupeNodeModules  // APFS clone-dedupe of node_modules under the category roots
-
-    /// The command line this action runs, for actions that shell out to a tool.
+    case trash
+    case gitCompact
+    case command(ShellCommand)
+    case dedupeNodeModules
     var commandDisplay: String? {
         if case .command(let c) = self { return c.display }
+        if case .gitCompact = self { return "git gc" }
         return nil
     }
 }
-
 struct CategoryDefinition: Identifiable, Sendable {
     let id: String
     let title: String
@@ -60,17 +58,15 @@ struct CategoryDefinition: Identifiable, Sendable {
     let roots: [URL]
     let strategy: CollectStrategy
     var action: CleanupAction = .trash
-    // Auto-selected only when both safe AND a plain trash-delete.
     var defaultSelected: Bool { safety == .safe && action == .trash }
-    // Command/dedupe categories run a tool; they stay visible even at 0 measured bytes.
     var isCommandBased: Bool {
         switch action {
-        case .command, .dedupeNodeModules: return true
-        default: return false
+        // Git scan items point to repository ROOTS, never to disposable files.
+        case .gitCompact, .command, .dedupeNodeModules: return true
+        case .trash: return false
         }
     }
 }
-
 struct CategoryResult: Identifiable, Sendable {
     let definition: CategoryDefinition
     var items: [ScanItem]

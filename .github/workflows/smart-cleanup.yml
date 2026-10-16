@@ -1,0 +1,66 @@
+name: Smart Cleanup tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: smart-cleanup-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apple-sdk:
+    name: Apple adapter, tests, and universal app
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apple SDK is actually present
+        run: |
+          set -euo pipefail
+          swift --version
+          xcodebuild -version
+          printf '#if !canImport(FoundationModels)\n#error("FoundationModels SDK required for this job")\n#endif\n' > /tmp/check-foundation-models.swift
+          swiftc -typecheck /tmp/check-foundation-models.swift
+      - name: Unit and metadata-fixture tests (no model or cleanup tools needed)
+        run: swift test
+      - name: Build universal macOS 14+ app with Apple adapter
+        run: ./build.sh --universal
+      - name: Verify architecture and weak framework linkage
+        run: |
+          set -euo pipefail
+          BIN=dist/FastCleanup.app/Contents/MacOS/FastCleanup
+          lipo -verify_arch arm64 x86_64 "$BIN"
+          otool -L "$BIN"
+          otool -l "$BIN" > /tmp/load-commands.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          chunks = Path('/tmp/load-commands.txt').read_text().split('Load command')
+          framework = [c for c in chunks if 'FoundationModels.framework' in c]
+          assert framework, 'Apple adapter was compiled out unexpectedly'
+          assert all('LC_LOAD_WEAK_DYLIB' in c for c in framework), 'FoundationModels must be weak-linked for macOS 14'
+          PY
+          tar -C dist -czf FastCleanup-universal.tgz FastCleanup.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smart-cleanup-universal
+          path: FastCleanup-universal.tgz
+  macos14-fallback:
+    name: macOS 14 fallback and backwards-compatible launch
+    runs-on: macos-14
+    needs: apple-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and test the explicitly disabled adapter
+        run: swift test -Xswiftc -DFASTCLEANUP_DISABLE_APPLE_AI
+      - uses: actions/download-artifact@v4
+        with:
+          name: smart-cleanup-universal
+      - name: Launch the modern-SDK app on macOS 14
+        run: |
+          set -euo pipefail
+          tar -xzf FastCleanup-universal.tgz
+          open FastCleanup.app
+          sleep 3
+          pgrep -lf "MacOS/FastCleanup"
+          pkill -f "MacOS/FastCleanup" || true
