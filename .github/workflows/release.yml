@@ -23,9 +23,20 @@ permissions:
 jobs:
   release:
     name: Sign, notarize & publish
-    runs-on: macos-14
+    # Keep the app deployment target at macOS 14, but compile the Apple adapter
+    # with a modern SDK. Older SDKs intentionally compile a rules-only fallback.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require Apple model SDK and run tests
+        run: |
+          set -euo pipefail
+          swift --version
+          xcodebuild -version
+          printf '#if !canImport(FoundationModels) || !compiler(>=6.2)\n#error("Apple adapter SDK required for release")\n#endif\n' > /tmp/check-apple-sdk.swift
+          swiftc -typecheck /tmp/check-apple-sdk.swift
+          swift test
 
       - name: Import Developer ID certificate
         env:

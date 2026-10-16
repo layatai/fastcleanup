@@ -70,7 +70,7 @@ struct RootView: View {
 }
 
 /// Classic macOS bottom-right resize grip (diagonal ticks). Shows a frame-resize
-/// pointer on hover where the OS supports it (macOS 15+).
+/// pointer on hover where the OS and SDK support it (macOS 15+).
 struct ResizeGrip: View {
     var body: some View {
         let grip = Canvas { ctx, size in
@@ -83,11 +83,15 @@ struct ResizeGrip: View {
         }
         .frame(width: 15, height: 15)
 
+        #if compiler(>=6.0)
         if #available(macOS 15.0, *) {
             grip.pointerStyle(.frameResize(position: .bottomTrailing))
         } else {
             grip
         }
+        #else
+        grip
+        #endif
     }
 }
 
@@ -145,7 +149,7 @@ struct OverviewCard: View {
             HStack(spacing: 16) {
                 DiskGauge(disk: state.disk)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("RECLAIMABLE").font(.caption2).foregroundStyle(.secondary)
+                    Text("SCANNED FOOTPRINT").font(.caption2).foregroundStyle(.secondary)
                     Text(Format.bytes(state.reclaimable))
                         .font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.tint)
                     HStack(spacing: 4) {
@@ -202,9 +206,11 @@ struct CategoryRow: View {
         Divider()
         Button { FileActions.copy(item.path) } label: { Label("Copy Path", systemImage: "doc.on.doc") }
         Button { FileActions.copy(item.name) } label: { Label("Copy Name", systemImage: "textformat") }
-        Divider()
-        Button(role: .destructive) { state.trashItem(item, inCategory: def.id) } label: {
-            Label("Move to Trash", systemImage: "trash")
+        if def.action == .trash {
+            Divider()
+            Button(role: .destructive) { state.trashItem(item, inCategory: def.id) } label: {
+                Label("Move to Trash", systemImage: "trash")
+            }
         }
     }
 
@@ -238,7 +244,7 @@ struct CategoryRow: View {
             HStack(spacing: 10) {
                 Button(action: onToggleSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 18))
+                        .font(.system(size: 18, weight: .regular))
                         .foregroundStyle(isSelected ? def.tint : Color.secondary.opacity(0.5))
                 }.buttonStyle(.plain)
 
@@ -338,7 +344,6 @@ struct CategoryRow: View {
 
 struct FooterView: View {
     @EnvironmentObject var state: AppState
-    @State private var confirming = false
     var body: some View {
         VStack(spacing: 0) {
             Divider()
@@ -348,23 +353,16 @@ struct FooterView: View {
                 }.disabled(state.isScanning || state.isCleaning)
                 Spacer()
                 if let msg = state.statusMessage {
-                    Text(msg).font(.caption).foregroundStyle(.green)
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
                 }
-                Button { confirming = true } label: {
+                // AppState provides the same confirmation for all cleanup entry points.
+                Button { state.cleanSelected() } label: {
                     if state.isCleaning { Label("Cleaning…", systemImage: "hourglass") }
                     else { Text("Clean \(Format.bytes(state.selectedSize))") }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(state.selected.isEmpty || state.isCleaning || state.isScanning)
-                .confirmationDialog(
-                    "Clean \(Format.bytes(state.selectedSize)) across \(state.selectedCount) items?",
-                    isPresented: $confirming, titleVisibility: .visible) {
-                    Button("Clean Now", role: .destructive) { state.cleanSelected() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(state.cleanSummary)
-                }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
         }
