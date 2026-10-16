@@ -69,7 +69,9 @@ public struct LocalCleanupFileSystem: CleanupFileSystem {
 
     public func stamp(_ url: URL) throws -> FileStamp {
         let fm = FileManager.default
-        let root = url.standardizedFileURL
+        // Keep the supplied physical path: standardization may resolve links or
+        // strip /private on macOS before our no-follow checks have run.
+        let root = url
         // Reject symlinked ancestors before using a path-based macOS Trash API.
         var ancestor = root
         while ancestor.path != "/" {
@@ -132,7 +134,7 @@ public struct LocalCleanupFileSystem: CleanupFileSystem {
 
     public func restore(from trash: URL, to original: URL) throws {
         // Validate destination ancestors too: restore must not follow a substituted link.
-        var parent = original.deletingLastPathComponent().standardizedFileURL
+        var parent = original.deletingLastPathComponent()
         while parent.path != "/" {
             let attributes = try FileManager.default.attributesOfItem(atPath: parent.path)
             guard attributes[.type] as? FileAttributeType == .typeDirectory else { throw CleanupError.unsafeFile }

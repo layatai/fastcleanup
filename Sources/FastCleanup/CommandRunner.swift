@@ -154,7 +154,7 @@ enum CommandRunner {
         return Output(
             code: p.terminationStatus,
             stdout: String(decoding: outData, as: UTF8.self),
-            stderr: String(decoding: errData, as: UTF8.self),
+            stderr: String(decoding: errData, as: UTF8.self)
         )
     }
 }

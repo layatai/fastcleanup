@@ -1,4 +1,9 @@
 import XCTest
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 @testable import FastCleanupCore
 
 private let home = URL(fileURLWithPath: "/Users/fixture")
@@ -187,9 +192,13 @@ final class CleanupServiceTests: XCTestCase {
 
 final class LocalFileSystemTests: XCTestCase {
     private func withFixture(_ body: (URL) throws -> Void) throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).resolvingSymlinksInPath()
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        // POSIX realpath preserves /private; Foundation may shorten it back to /var.
+        guard let physical = realpath(temporary.path, nil) else { throw CleanupError.unreadableFile }
+        defer { free(physical) }
+        let root = URL(fileURLWithPath: String(cString: physical), isDirectory: true)
         try body(root)
     }
     func testDetectsNestedEditsNotJustRootMtime() throws {
